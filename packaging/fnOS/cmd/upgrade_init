@@ -1,0 +1,9 @@
+#!/bin/bash
+
+### 升级前：先停服务
+
+CMD_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+if [ -x "${CMD_DIR}/main" ]; then
+    bash "${CMD_DIR}/main" stop
+fi
+exit 0

@@ -1,0 +1,204 @@
+#!/bin/bash
+
+### 网易云音乐 NAS 版 —— 服务生命周期
+###
+### 原生 Node.js 应用，运行期用应用中心的 Node.js v22：
+###     /vol1/@appcenter/nodejs_v22/bin/node
+### 代码 + 官方前端包在 ${TRIM_APPDEST}（只读，升级整体覆盖），
+### 用户数据（登录态、缓存）落 ${TRIM_PKGVAR}/data。
+###
+### status 约定：运行中 exit 0，未运行 exit 3（不是 1）。
+
+APP="NETEASE_CLOUD_MUSIC"
+SERVICE_JS="src/index.js"
+PORT="${TRIM_SERVICE_PORT:-8163}"
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+
+### TRIM_APPDEST 兜底：必须落到 target 链接指向的真目录。
+### /var/apps/<app> 本身是真目录，readlink -f 不穿透它 —— 拿它当 APPDEST 会拼出
+### /var/apps/<app>/src/index.js 这种不存在的路径，status/stop 会静默失效。
+if [ -z "${TRIM_APPDEST}" ]; then
+    if [ -d "/var/apps/${APP}/target" ]; then
+        TRIM_APPDEST="$(readlink -f "/var/apps/${APP}/target")"
+    else
+        TRIM_APPDEST="$(readlink -f "/var/apps/${APP}")"
+    fi
+fi
+: "${TRIM_PKGVAR:=/var/apps/${APP}/var}"
+: "${TRIM_USERNAME:=${APP}}"
+: "${TRIM_GROUPNAME:=${TRIM_USERNAME}}"
+
+APP_DIR="${TRIM_APPDEST}"
+DATA_DIR="${TRIM_PKGVAR}/data"
+NODE_BIN="/vol1/@appcenter/nodejs_v22/bin/node"
+
+# 前端资源在**只读的应用目录**里（随包发布、升级整体覆盖），
+# 用户数据才在 ${TRIM_PKGVAR}/data。两者必须分开指，否则应用会在
+# 空的 PKGVAR 里找不到 webfiles，页面直接 404。
+WEBFILES_DIR="${APP_DIR}/data/webfiles"
+RESOURCE_DIR="${APP_DIR}/data/resource"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"
+}
+
+### 进程存活判定以 /proc 为准。
+### 不用 kill -0：非属主调用时它对活着的进程返回 EPERM，与"不存在"在 shell 里无法区分，
+### 会把 pidfile 误删（而 pidfile 往往是 fnOS 判定服务状态的依据）。
+###
+### 匹配串必须是**绝对路径**：实测 NAS 上常驻着 cwd=/app、exe=/usr/local/bin/node 的
+### Docker 容器内进程，cmdline 恰好也叫 "node src/index.js"。用短串匹配会把它当成自己人，
+### 于是 status 谎报 running → start 直接跳过 → 端口从不监听 → 桌面点开是白屏；
+### stop 里的 pkill 更会顺手杀掉那个无关容器进程。
+pid_alive() {
+    local pid="$1" cmd state
+    [ -n "${pid}" ] || return 1
+    [ -d "/proc/${pid}" ] || return 1
+    state="$(cut -d' ' -f3 "/proc/${pid}/stat" 2>/dev/null)"
+    [ "${state}" = "Z" ] && return 1
+    cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null)"
+    [ -z "${cmd}" ] && return 0
+    case "${cmd}" in *"${APP_DIR}/${SERVICE_JS}"*) return 0 ;; esac
+    return 1
+}
+
+### 只认本应用自己的进程（绝对路径 + 应用目录），绝不误伤同名进程。
+own_pids() {
+    pgrep -f -- "${APP_DIR}/${SERVICE_JS}" 2>/dev/null
+}
+
+read_pid() {
+    [ -r "${PID_FILE}" ] && head -n 1 "${PID_FILE}" | tr -d '[:space:]'
+}
+
+find_node() {
+    if [ -x "${NODE_BIN}" ]; then
+        printf '%s' "${NODE_BIN}"
+        return 0
+    fi
+    # 退路：PATH 或应用中心其它 Node 版本
+    local p
+    p="$(command -v node 2>/dev/null)" && [ -x "${p}" ] && { printf '%s' "${p}"; return 0; }
+    for d in /vol1/@appcenter/nodejs_v*/bin/node; do
+        [ -x "${d}" ] && { printf '%s' "${d}"; return 0; }
+    done
+    return 1
+}
+
+start_process() {
+    if status > /dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ ! -f "${APP_DIR}/${SERVICE_JS}" ]; then
+        log_msg "启动失败：找不到 ${APP_DIR}/${SERVICE_JS}"
+        echo "应用文件缺失：${APP_DIR}/${SERVICE_JS}" > "${TRIM_TEMP_LOGFILE}"
+        return 1
+    fi
+
+    local node
+    if ! node="$(find_node)"; then
+        log_msg "启动失败：找不到 Node.js 运行时"
+        echo "未找到 Node.js 运行时，请确认应用中心已安装 Node.js v22" > "${TRIM_TEMP_LOGFILE}"
+        return 1
+    fi
+
+    mkdir -p "${DATA_DIR}" "$(dirname "${PID_FILE}")"
+    log_msg "Starting process ..."
+    log_msg "NODE=${node}  APP_DIR=${APP_DIR}  DATA=${DATA_DIR}  PORT=${PORT}"
+
+    # 环境变量写进 bash -c 内部：runuser 会清掉外层环境
+    # SERVICE_JS 用绝对路径：cmdline 里带上应用目录，才不会被别的 node 进程冒名顶替。
+    local CMD
+    CMD="cd '${APP_DIR}' && exec env NASNEM_PORT='${PORT}' NASNEM_HOST='0.0.0.0' \
+NASNEM_DATA='${DATA_DIR}' NASNEM_WEBFILES='${WEBFILES_DIR}' NASNEM_RESOURCE='${RESOURCE_DIR}' \
+NASNEM_MULTI_USER=1 NASNEM_TRUST_PROXY=1 NODE_ENV=production \
+'${node}' '${APP_DIR}/${SERVICE_JS}'"
+
+    if [ "$(id -un)" = "${TRIM_USERNAME}" ]; then
+        bash -c "${CMD}" >> "${LOG_FILE}" 2>&1 &
+    else
+        runuser -u "${TRIM_USERNAME}" -- bash -c "${CMD}" >> "${LOG_FILE}" 2>&1 &
+    fi
+    printf "%s" "$!" > "${PID_FILE}"
+
+    # 等端口真正起来再交差：起不来就把结果写进日志，方便在应用中心一眼看出原因。
+    local i=0
+    while [ "${i}" -lt 30 ]; do
+        if grep -q ":$(printf '%04X' "${PORT}")" /proc/net/tcp 2>/dev/null; then
+            log_msg "process started, port ${PORT} 已监听 (PID=$(cat "${PID_FILE}" 2>/dev/null))"
+            return 0
+        fi
+        pid_alive "$(cat "${PID_FILE}" 2>/dev/null)" || break
+        sleep 1
+        i=$((i + 1))
+    done
+    log_msg "警告：进程已拉起但 ${PORT} 端口未监听，请查看上方应用日志"
+    return 0
+}
+
+stop_process() {
+    log_msg "Stopping process ..."
+
+    local pid
+    pid="$(read_pid)"
+    if [ -n "${pid}" ]; then
+        if pid_alive "${pid}"; then
+            log_msg "send TERM signal to PID:${pid} ..."
+            kill -TERM "${pid}" 2>/dev/null || true
+            local count=0
+            while pid_alive "${pid}" && [ "${count}" -lt 10 ]; do
+                sleep 1
+                count=$((count + 1))
+            done
+            if pid_alive "${pid}"; then
+                log_msg "send KILL signal to PID:${pid} ..."
+                kill -KILL "${pid}" 2>/dev/null || true
+            fi
+        else
+            log_msg "pid ${pid} 已不存在"
+        fi
+        rm -f "${PID_FILE}"
+    fi
+
+    # 兜底：pidfile 丢失时按**绝对路径**清理残留进程。
+    # 模式串前必须加 -- ，否则会被 procps 当成选项（invalid option）。
+    if own_pids > /dev/null 2>&1; then
+        log_msg "清理残留进程 (${APP_DIR}/${SERVICE_JS})"
+        pkill -TERM -f -- "${APP_DIR}/${SERVICE_JS}" 2>/dev/null || true
+        sleep 1
+        pkill -KILL -f -- "${APP_DIR}/${SERVICE_JS}" 2>/dev/null || true
+    fi
+
+    log_msg "process stopped"
+    return 0
+}
+
+status() {
+    local pid
+    pid="$(read_pid)"
+    if [ -n "${pid}" ] && pid_alive "${pid}"; then
+        return 0
+    fi
+    # pidfile 所指进程确实不存在才清理；权限受限（读不到 cmdline）一律留着
+    if [ -n "${pid}" ] && [ ! -d "/proc/${pid}" ]; then
+        rm -f "${PID_FILE}"
+    fi
+    # pidfile 丢了但进程还在（异常重启后常见）——重新认领，避免 stop 失效
+    pid="$(own_pids | head -n 1)"
+    if [ -n "${pid}" ] && pid_alive "${pid}"; then
+        printf "%s" "${pid}" > "${PID_FILE}" 2>/dev/null || true
+        return 0
+    fi
+    return 1
+}
+
+case "$1" in
+    start)   start_process ;;
+    stop)    stop_process ;;
+    restart) stop_process; sleep 1; start_process ;;
+    status)  if status; then exit 0; else exit 3; fi ;;
+    *)       exit 1 ;;
+esac

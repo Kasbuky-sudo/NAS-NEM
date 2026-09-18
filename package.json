@@ -1,0 +1,37 @@
+{
+  "name": "nas-nem",
+  "version": "0.2.0",
+  "description": "NetEase Cloud Music 的 NAS 网页版：官方前端包 + Node.js 宿主，以原生 fnOS 应用运行",
+  "type": "module",
+  "license": "MIT",
+  "author": "YUCLing (https://github.com/YUCLing/open-orpheus)",
+  "contributors": [
+    "Kasbuky-sudo (https://github.com/Kasbuky-sudo/NAS-NEM) —— NAS 宿主移植与 fnOS 打包"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kasbuky-sudo/NAS-NEM.git"
+  },
+  "homepage": "https://github.com/YUCLing/open-orpheus",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --trace-warnings src/index.js",
+    "fetch-pack": "node scripts/fetch-pack.js",
+    "doctor": "node scripts/doctor.js",
+    "test:anonid": "node scripts/test-anonid.mjs",
+    "test:eapi": "node scripts/test-eapi.mjs",
+    "test": "node scripts/test-anonid.mjs && node scripts/test-eapi.mjs",
+    "probe:eapi": "node scripts/probe-eapi.mjs",
+    "smoke": "node scripts/browser-smoke.mjs"
+  },
+  "dependencies": {
+    "7z-wasm": "^1.1.0",
+    "express": "^4.19.2",
+    "tough-cookie": "^4.1.4",
+    "ws": "^8.18.0"
+  }
+}

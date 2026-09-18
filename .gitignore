@@ -1,0 +1,16 @@
+# 依赖与本机数据
+node_modules/
+data/
+.workbuddy/
+.cache/
+
+# 构建产物
+packaging/fnOS/.build-staging/
+packaging/fnOS/dist/
+
+# 本机诊断脚本（含内网地址与凭据，绝不入库）
+packaging/fnOS/scripts/nas-*.py
+scripts/
+
+# 运行日志
+*.log

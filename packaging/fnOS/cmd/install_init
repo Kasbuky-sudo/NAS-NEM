@@ -1,0 +1,19 @@
+#!/bin/bash
+
+### 网易云音乐 NAS 版 —— 安装前检查
+###
+### 本应用是原生 Node.js 应用，运行期依赖应用中心的 Node.js v22（包名 nodejs_v22）。
+### 该依赖已在 manifest 的 install_dep_apps 里声明，应用中心会在安装本应用前
+### 自动把它装上，所以这里**不能因为缺失就报错**（那只会让安装失败），
+### 只把现状写进日志，方便装完排查。
+
+echo "=== install_init ===" >> "${TRIM_TEMP_LOGFILE}"
+
+NODE_BIN="/vol1/@appcenter/nodejs_v22/bin/node"
+if [ -x "${NODE_BIN}" ]; then
+    echo "Node.js: $("${NODE_BIN}" -v 2>&1)  (${NODE_BIN})" >> "${TRIM_TEMP_LOGFILE}"
+else
+    echo "提示：暂未看到 ${NODE_BIN}；应用中心应在安装阶段自动安装 nodejs_v22 依赖" \
+        >> "${TRIM_TEMP_LOGFILE}"
+fi
+exit 0

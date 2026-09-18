@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "NETEASE_CLOUD_MUSIC.Application": {
+            "title": "网易云音乐",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "port": "8163",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

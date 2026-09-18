@@ -1,0 +1,7 @@
+#!/bin/bash
+
+### 卸载后：**保留**用户数据（${TRIM_PKGVAR}/data）
+### 网易云的登录态与缓存都在里面，重装后还要用。
+
+echo "已卸载，数据保留在 ${TRIM_PKGVAR}/data" >> "${TRIM_TEMP_LOGFILE}"
+exit 0

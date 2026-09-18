@@ -1,0 +1,70 @@
+=== tail info.log ===
+2026-09-18 12:59:25 - Stopping process ...
+2026-09-18 12:59:25 - 清理残留进程 (src/index.js)
+2026-09-18 12:59:26 - process stopped
+2026-09-18 12:59:26 - Stopping process ...
+2026-09-18 12:59:26 - 清理残留进程 (src/index.js)
+2026-09-18 12:59:28 - process stopped
+
+
+=== ls appdata ===
+total 4
+drwxrwx---+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC   24 Sep 18 12:59 .
+drwxr-xr-x  1 root                root                1528 Sep 18 13:01 ..
+drwx------  1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC    0 Sep 18 12:58 data
+-rwx------  1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC  274 Sep 18 12:59 info.log
+
+
+=== port 8163 ===
+NO_LISTEN
+
+
+=== node procs ===
+   3108 omni-to+ /var/apps/nodejs_v22/target/bin/node /vol1/@appcenter/omni-tools/server/static-server.js
+   4269 miyin    node start.mjs
+   4328 lite.vi+ node /vol1/@appcenter/lite.video/server/server.js
+   4563 miyin    /vol1/@appcenter/nodejs_v22/bin/node /vol1/@appcenter/miyin/server/.output/server/index.mjs
+   5783 root     node src/index.js
+   7000 hermes-+ /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/dist/server/index.js
+   9464 hermes-+ /vol1/@apphome/hermes-studio/hermes-agent/venv/bin/python3 /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/dist/server/agent-bridge/python/hermes_bridge.py --endpoint ipc:///tmp/hermes-agent-bridge.sock --agent-root /vol1/@apphome/hermes-studio/hermes-agent --hermes-home /vol1/@apphome/hermes-studio/hermes-home
+   9760 hermes-+ /vol1/@apphome/hermes-studio/hermes-agent/venv/bin/python /vol1/@apphome/hermes-studio/hermes-agent/tools/mcp_stdio_watchdog.py --ppid 9020 -- /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs api
+   9762 hermes-+ /vol1/@apphome/hermes-studio/hermes-agent/venv/bin/python /vol1/@apphome/hermes-studio/hermes-agent/tools/mcp_stdio_watchdog.py --ppid 9020 -- /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs browser
+   9764 hermes-+ /vol1/@apphome/hermes-studio/hermes-agent/venv/bin/python /vol1/@apphome/hermes-studio/hermes-agent/tools/mcp_stdio_watchdog.py --ppid 9020 -- /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs devices
+   9766 hermes-+ /vol1/@apphome/hermes-studio/hermes-agent/venv/bin/python /vol1/@apphome/hermes-studio/hermes-agent/tools/mcp_stdio_watchdog.py --ppid 9020 -- /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs use
+   9768 hermes-+ /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs devices
+   9775 hermes-+ /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs use
+   9777 hermes-+ /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs browser
+   9789 hermes-+ /vol1/@appcenter/nodejs_v24/bin/node /vol1/@apphome/hermes-studio/data/node/lib/node_modules/hermes-web-ui/bin/hermes-studio-mcp.mjs api
+  10427 root     node /vol1/@appcenter/FnOS_UI_Mods/server/server.js
+1763356 frog-nas /var/apps/nodejs_v22/target/bin/node /vol1/@appcenter/frog-nas/server/src/server.js
+
+
+=== nodejs_v22 ===
+total 118776
+drwxrwxr-x+ 1 root root        36 Jan  2  2026 .
+drwxrwxr-x+ 1 root root        92 Jan  2  2026 ..
+lrwxrwxrwx  1 root root        45 Jan  2  2026 corepack -> ../lib/node_modules/corepack/dist/corepack.js
+-rwxrwxr-x+ 1 root root 121613584 Jan  2  2026 node
+lrwxrwxrwx  1 root root        38 Jan  2  2026 npm -> ../lib/node_modules/npm/bin/npm-cli.js
+lrwxrwxrwx  1 root root        38 Jan  2  2026 npx -> ../lib/node_modules/npm/bin/npx-cli.js
+
+
+=== app dest ===
+total 4
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC   84 Sep 18 13:05 .
+drwxr-xr-x  1 root                root                 900 Sep 18 13:05 ..
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC   34 Sep 18 13:05 config
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC   32 Sep 18 13:05 data
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC 1588 Sep 18 13:05 node_modules
+-rwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC  852 Sep 18 13:05 package.json
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC  172 Sep 18 13:05 src
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC   24 Sep 18 13:05 ui
+drwxrwxr-x+ 1 NETEASE_CLOUD_MUSIC NETEASE_CLOUD_MUSIC   14 Sep 18 13:05 web
+
+
+=== pkgvar ===
+ls: cannot access '/vol1/@appdata/NETEASE_CLOUD_MUSIC/var/': No such file or directory
+
+
+=== dmesg oom ===
+(empty)
