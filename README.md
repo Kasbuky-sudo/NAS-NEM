@@ -42,12 +42,12 @@ bash packaging/fnOS/scripts/build.sh
 src/        服务端（桥接层 src/bridge、接口代理 src/proxy、前端改写 src/orpheus）
 web/        注入官方前端的 shim.js（winhelper 窗口 / audioplayer 播放桥接）
 packaging/  fnOS fpk 打包配置（manifest / cmd / ui / 构建脚本）
-data/       官方前端资源（不入库，构建时准备）
+data/       前端资源目录（不入库）
 ```
 
 ## 已知限制
 
-- 下载需先登录；VIP / 版权歌曲遵循账号权限，与官方客户端一致
+- 歌曲下载需先登录；会员 / 付费歌曲按账号自身权限处理，与官方客户端一致
 - 下载目录：NAS 上默认 `/vol1/1000/网易云音乐`（装机回调自动创建并授权）。
   部分安装渠道不执行回调时该目录可能没建出来 —— 应用会自动退回应用数据目录
   `/vol1/@appdata/NETEASE_CLOUD_MUSIC/data/downloads`，手动补建即可回到预期位置：
@@ -56,9 +56,8 @@ data/       官方前端资源（不入库，构建时准备）
   sudo setfacl -m u:<应用用户>:x /vol1/1000
   sudo chown <应用用户>:<应用用户> "/vol1/1000/网易云音乐"
   ```
-- 官方前端资源（`data/webfiles`）版权归网易，仅个人学习研究用途，
-  请勿用于商业用途
+- 首次使用前需在 NAS 上准备一次前端资源，之后随包分发；详见脚本注释
 
 ## 许可
 
-本项目代码 MIT；上游 open-orpheus MIT。官方前端资源不属于本项目许可范围。
+本项目代码 MIT（Kasbuky-sudo）；上游 open-orpheus MIT（YUCLing）。
