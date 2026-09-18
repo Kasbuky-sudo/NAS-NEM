@@ -1,6 +1,6 @@
 {
   "name": "nas-nem",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "NetEase Cloud Music 的 NAS 网页版：官方前端包 + Node.js 宿主，以原生 fnOS 应用运行",
   "type": "module",
   "license": "MIT",
