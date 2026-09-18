@@ -75,6 +75,11 @@ export function sessionCount() {
   return sessions.size;
 }
 
+/** 枚举所有会话上下文（agent 层找登录态用） */
+export function listSessions() {
+  return [...sessions.values()];
+}
+
 async function createSession(sid) {
   const base = config.multiUser ? join(paths.users, sid) : join(paths.users, "shared");
   mkdirSync(base, { recursive: true });
@@ -158,6 +163,7 @@ export function attachBridge(server) {
   wss.on("connection", async (ws, req) => {
     let sid = sidFrom(req);
     if (!sid || !/^[A-Za-z0-9_-]{4,64}$/.test(sid)) sid = randomId(12);
+    sid = normalizeSid(sid);
 
     let ctx = sessions.get(sid);
     if (!ctx) {
@@ -235,8 +241,21 @@ export function attachBridge(server) {
   return wss;
 }
 
+/**
+ * 会话键归一：单用户模式下所有浏览器共用 "shared" 一个会话实例。
+ *
+ * ⚠️ 不能只把磁盘目录折到 shared 就完事 —— 那样两个浏览器还是各自
+ * createSession 出**两份内存罐实例**指向同一个 cookies.json，
+ * A 设备刚写入的登录态会被 B 设备的旧罐 save 回去（登录态互踩）。
+ * 归一后 sessions 里只有一个键，所有连接共享同一罐实例，天然同步。
+ */
+function normalizeSid(sid) {
+  return config.multiUser ? sid : "shared";
+}
+
 /** 保证会话存在（HTTP 侧要用，比如反代里存 cookie） */
 export async function ensureSession(sid) {
+  sid = normalizeSid(sid);
   let ctx = sessions.get(sid);
   if (!ctx) ctx = await createSession(sid);
   return ctx;

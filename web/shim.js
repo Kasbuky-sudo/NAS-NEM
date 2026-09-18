@@ -1467,3 +1467,34 @@
 
   state.startTime = W._enterAppTime || Date.now();
 })();
+
+/* ── 游客提示：刷新不出音乐时，先登录即可 ─────────────────────────
+ * 官方前端游客态下部分区块（每日推荐等）不出数据；新设备首次打开容易
+ * 误以为"没网"。检测到未登录标记就弹一次小提示，8 秒自动消失。 */
+(function () {
+  var KEY = "__nasnem_login_tip_shown";
+  function showTip() {
+    try { if (sessionStorage.getItem(KEY)) return; } catch (e) {}
+    var d = document.createElement("div");
+    d.textContent = "刷新不出音乐？先登录即可刷新";
+    d.style.cssText = [
+      "position:fixed", "right:20px", "bottom:28px", "z-index:99999",
+      "background:#C20C0C", "color:#fff", "font-size:13px", "line-height:1",
+      "padding:10px 16px", "border-radius:20px", "box-shadow:0 4px 14px rgba(0,0,0,.25)",
+      "opacity:0", "transition:opacity .4s", "pointer-events:none", "font-family:inherit"
+    ].join(";");
+    document.body.appendChild(d);
+    requestAnimationFrame(function () { d.style.opacity = "1"; });
+    setTimeout(function () {
+      d.style.opacity = "0";
+      setTimeout(function () { d.remove(); }, 500);
+    }, 8000);
+    try { sessionStorage.setItem(KEY, "1"); } catch (e) {}
+  }
+  function check() {
+    var unlogin = document.querySelector('[class*="Unlogin"], [class*="unlogin"]');
+    if (unlogin) showTip();
+  }
+  if (document.readyState === "complete") setTimeout(check, 25000);
+  else window.addEventListener("load", function () { setTimeout(check, 25000); });
+})();

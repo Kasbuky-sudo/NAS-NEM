@@ -146,17 +146,25 @@ export async function handleCache(req, res) {
   }
 
   let upstream;
+  // ⚠️ 超时只保护到"上游回响应头"为止。早期版本用 AbortSignal.timeout(requestTimeout)
+  // 挂在整个请求周期上，音频/大图这类长响应一过 30s 就被砍断 —— fromWeb 出来的
+  // Readable emit 'error' 没人接，uncaughtException 直接把进程打崩（两台 NAS 都
+  // 实录过，表现就是应用中心里"应用自己停了"）。
+  const ctrl = new AbortController();
+  const headerTimer = setTimeout(() => ctrl.abort(), config.requestTimeout);
   try {
     upstream = await fetch(u.href, {
       headers: { "user-agent": UA, referer: "https://music.163.com/", accept: "image/avif,image/webp,image/*,*/*" },
       redirect: "follow",
-      signal: AbortSignal.timeout(config.requestTimeout),
+      signal: ctrl.signal,
     });
   } catch (e) {
+    clearTimeout(headerTimer);
     log.warn(`图片代理失败 ${u.href.slice(0, 110)} → ${e.message}`);
     res.status(502).end("image upstream failed");
     return true;
   }
+  clearTimeout(headerTimer);
 
   res.status(upstream.status);
   const ct = upstream.headers.get("content-type");
@@ -170,11 +178,17 @@ export async function handleCache(req, res) {
     res.end();
     return true;
   }
-  try {
-    Readable.fromWeb(upstream.body).pipe(res);
-  } catch {
-    res.end();
-  }
+  const src = Readable.fromWeb(upstream.body);
+  // pipe() 不传播 error，两端都得自己接，谁炸都不能带走进程
+  src.on("error", (e) => {
+    log.warn(`图片上游流中断 ${u.host} → ${e.message}`);
+    res.destroy();
+  });
+  res.on("error", (e) => {
+    log.warn(`图片写客户端失败 ${u.host} → ${e.message}`);
+    src.destroy();
+  });
+  src.pipe(res);
   return true;
 }
 
@@ -236,11 +250,19 @@ export async function handleProxy(req, res) {
   if (req.headers.cookie) headers["cookie"] = req.headers.cookie;
 
   const method = req.method || "GET";
+  // ⚠️ 超时只保护"等多久要响应头"，流式传输阶段绝不能有绝对超时（血的教训见
+  // handleCache 注释：30s 砍音频流 → Readable emit 'error' → 进程崩 → 应用"自动关闭"）。
+  const ctrl = new AbortController();
+  const headerTimer = setTimeout(() => ctrl.abort(), config.requestTimeout);
+  // 客户端提前断开（切歌 / 关页面 / 刷新）→ 立刻掐断上游，别对着已关的连接白拉流
+  res.on("close", () => {
+    if (!res.writableFinished) ctrl.abort();
+  });
   const init = {
     method,
     headers,
     redirect: "manual",
-    signal: AbortSignal.timeout(config.requestTimeout),
+    signal: ctrl.signal,
   };
 
   if (method !== "GET" && method !== "HEAD") {
@@ -252,10 +274,12 @@ export async function handleProxy(req, res) {
   try {
     upstream = await fetch(target, init);
   } catch (e) {
+    clearTimeout(headerTimer);
     log.warn(`上游请求失败 ${target} → ${e.message}`);
     res.status(502).json({ code: 502, msg: `upstream failed: ${e.message}` });
     return true;
   }
+  clearTimeout(headerTimer);
 
   log.debug(`${method} ${host}${tail.slice(0, 90)} → ${upstream.status}`);
 
@@ -414,7 +438,19 @@ export async function handleProxy(req, res) {
       .catch((e) => log.warn(`API dump 失败（不影响转发）: ${e.message}`));
   }
 
-  Readable.fromWeb(upstream.body).pipe(res);
+  // ⚠️ pipe() 不传播 error。上游断流 / 客户端断开时两端各自 emit 'error'，
+  // 早期版本没人接 → uncaughtException → 进程崩（两台 NAS 都实录过，
+  // 表现是应用中心里应用"自己停了"，日志尾部是 TimeoutError + Unhandled 'error' event）。
+  const src = Readable.fromWeb(upstream.body);
+  src.on("error", (e) => {
+    log.warn(`[proxy] 上游流中断 ${method} ${host}${tail.slice(0, 80)} → ${e.message}`);
+    res.destroy();
+  });
+  res.on("error", (e) => {
+    log.warn(`[proxy] 写客户端失败 ${method} ${host}${tail.slice(0, 80)} → ${e.message}`);
+    src.destroy();
+  });
+  src.pipe(res);
   return true;
 }
 

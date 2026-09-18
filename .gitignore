@@ -14,3 +14,6 @@ scripts/
 
 # 运行日志
 *.log
+
+# 本机 WorkBuddy 技能（含内网地址与凭据，绝不入库）
+skills/

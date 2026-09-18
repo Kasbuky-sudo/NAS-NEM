@@ -114,7 +114,7 @@ start_process() {
     local CMD
     CMD="cd '${APP_DIR}' && exec env NASNEM_PORT='${PORT}' NASNEM_HOST='0.0.0.0' \
 NASNEM_DATA='${DATA_DIR}' NASNEM_WEBFILES='${WEBFILES_DIR}' NASNEM_RESOURCE='${RESOURCE_DIR}' \
-NASNEM_MULTI_USER=1 NASNEM_TRUST_PROXY=1 NODE_ENV=production \
+NASNEM_TRUST_PROXY=1 NODE_ENV=production \
 '${node}' '${APP_DIR}/${SERVICE_JS}'"
 
     if [ "$(id -un)" = "${TRIM_USERNAME}" ]; then

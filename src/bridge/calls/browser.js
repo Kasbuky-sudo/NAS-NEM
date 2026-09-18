@@ -80,11 +80,18 @@ function normCookie(a, b) {
     for (const k of keys) if (o[k] !== undefined && o[k] !== "") return o[k];
     return undefined;
   };
+  // 与 pick 的唯一区别：**空字符串是合法值**。
+  // ⚠️ 官方前端启动时写设备指纹 cookie `{Name:"mode",Value:""}` —— 空串，
+  // 早年 pick 把它当"没传"丢掉，日志里一大片「setCookie mode 缺少 value」。
+  const pickKeepEmpty = (...keys) => {
+    for (const k of keys) if (o[k] !== undefined) return o[k];
+    return undefined;
+  };
 
   return {
     url: String(pick("Url", "url") || DEFAULT_URL),
     name: pick("Name", "name", "key"),
-    value: pick("Value", "value"),
+    value: pickKeepEmpty("Value", "value"),
     domain: pick("Domain", "domain"),
     path: pick("Path", "path") || "/",
     // 位置参数形态：(url, name)，第二个参数是名字
@@ -173,10 +180,29 @@ export function makeBrowserCalls(ctx) {
       return [];
     },
 
-    /** 删 cookie：SDK 是位置参数 `(url, name)`，不在位置参数时兼容对象形态 */
+    /**
+     * 删 cookie：SDK 是位置参数 `(url, name)`，不在位置参数时兼容对象形态。
+     *
+     * ⚠️⚠️ **MUSIC_U 删除保护（2026-09-18 血案）**：
+     * 官方前端启动时若发现"CEF session 里有 MUSIC_U，但本机 localStorage 没有
+     * 自动登录凭据（autoLoginCookies 是浏览器本地加密 blob，无法跨设备）"，
+     * 会把 session 里的 MUSIC_U 视为脏数据而 **主动 removeCookie 清掉**。
+     * 在官方壳里 session 与 localStorage 同生共死不会出现这种组合；
+     * NAS 版里 session=服务端罐（全设备共享）、localStorage=各自浏览器，
+     * 于是任何一台新设备打开页面都会把全家的登录态删掉——
+     * 这就是「换个设备就得重新登录」的真凶（先 remove 再游客初始化，CDP 实录）。
+     *
+     * 对策：MUSIC_U 一律拒删（返回成功但不动罐）。副作用：前端"退出登录"
+     * 清不掉罐里的登录 cookie（UI 会退出，重启页面又会自动恢复）；
+     * 需要真登出时清 `data/users/shared/cookies.json` 后重启应用。
+     */
     "browser.removeCookie": (arg, nameArg) => {
       const c = normCookie(arg, nameArg);
       const name = c.bareName || c.name;
+      if (name === "MUSIC_U") {
+        log.warn(`removeCookie MUSIC_U 已拦截（登录态保护，NAS 版罐为全设备共享）`);
+        return [];
+      }
       if (name) {
         jar().remove(c.url, name);
         ctx.saveCookies();

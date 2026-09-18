@@ -18,18 +18,15 @@
  * 由 storage.init 回传给前端当 `Setting.downloadDir`，前端拼出 prePath 再传回来。
  * 安全：所有落盘路径必须落在该目录内（safeJoin 越界即抛），半成品写 ".part" 成功后改名。
  */
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import createLogger from "../../logger.js";
 import { resolveDownloadDir } from "../../config.js";
 import { safeJoin } from "../../util.js";
+import { downloadToFile } from "../../download/engine.js";
 
 const log = createLogger("call:download");
-
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Netease_Music PC 3.1.34.205281";
 
 /** 活跃任务表：id → entry */
 const tasks = new Map();
@@ -63,57 +60,28 @@ function emitProcess(ctx, entry, isLast) {
   ]);
 }
 
-/** 拉流落盘：写 .part，完成后改名；每 400ms 推一次进度，结束推 islast */
+/** 拉流落盘：核心 IO 走共享引擎（src/download/engine.js），这里只管事件回推 */
 async function runDownload(ctx, entry) {
-  const partFile = `${entry.path}.part`;
   try {
-    const res = await fetch(entry.url, {
+    const { size } = await downloadToFile({
+      url: entry.url,
+      destPath: entry.path,
       signal: entry.ctrl.signal,
-      headers: { "User-Agent": UA },
+      onProgress: ({ down, total, speed, done }) => {
+        entry.down = down;
+        if (total) entry.total = total;
+        entry.speed = speed;
+        emitProcess(ctx, entry, done);
+      },
     });
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-
-    const len = Number(res.headers.get("content-length")) || 0;
-    if (len) entry.total = len;
-
-    let lastTick = Date.now();
-    let lastDown = 0;
-    const ws = createWriteStream(partFile);
-
-    for await (const chunk of res.body) {
-      if (entry.cancelled) break;
-      entry.down += chunk.length;
-      if (!ws.write(chunk)) {
-        await new Promise((r) => ws.once("drain", r));
-      }
-      const now = Date.now();
-      if (now - lastTick >= 400) {
-        entry.speed = ((entry.down - lastDown) * 1000) / Math.max(1, now - lastTick);
-        lastTick = now;
-        lastDown = entry.down;
-        emitProcess(ctx, entry, false);
-      }
-    }
-
-    await new Promise((r) => ws.end(r));
-    if (entry.cancelled) {
-      await rm(partFile, { force: true });
-      log.info(`任务 ${entry.id} 已取消/暂停`);
-    } else {
-      entry.speed = 0;
-      await rename(partFile, entry.path);
-      const st = await stat(entry.path);
-      if (!entry.total) entry.total = st.size;
-      log.info(`任务 ${entry.id} 完成 → ${entry.path}（${(st.size / 1048576).toFixed(2)} MB）`);
-      emitProcess(ctx, entry, true);
-    }
+    if (!entry.total) entry.total = size;
+    entry.speed = 0;
+    log.info(`任务 ${entry.id} 完成 → ${entry.path}（${(size / 1048576).toFixed(2)} MB）`);
   } catch (e) {
     if (entry.cancelled || /abort/i.test(String(e.message))) {
-      await rm(partFile, { force: true }).catch(() => {});
-      log.info(`任务 ${entry.id} 中止: ${e.message}`);
+      log.info(`任务 ${entry.id} 已取消/暂停: ${e.message}`);
     } else {
       log.warn(`任务 ${entry.id} 失败: ${e.message} ← ${String(entry.url).slice(0, 120)}`);
-      await rm(partFile, { force: true }).catch(() => {});
       // 失败也要给终态事件，别让 UI 永远转圈
       entry.down = 0;
       entry.speed = 0;

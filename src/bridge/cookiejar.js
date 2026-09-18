@@ -9,7 +9,7 @@
  * 落盘到 `data/users/<id>/cookies.json`，重启不丢登录态。
  */
 import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CookieJar } from "tough-cookie";
 
@@ -54,17 +54,52 @@ export class SessionCookies {
     this.file = join(dir, "cookies.json");
     this.jar = new CookieJar();
     this.dirty = false;
+    /** save() 的串行锁：并发 save 会导致两个 JSON 拼进同一文件（坏档实录见下） */
+    this.#saving = false;
     this.#load();
   }
+
+  #saving = false;
 
   #load() {
     try {
       if (existsSync(this.file)) {
-        const raw = JSON.parse(readFileSync(this.file, "utf8"));
-        this.jar = CookieJar.fromJSON(raw);
+        this.jar = CookieJar.fromJSON(this.#readGoodJson());
       }
     } catch (e) {
       log.warn(`读取 cookie 罐失败: ${e.message}`);
+    }
+  }
+
+  /**
+   * 读罐文件并容忍尾部脏数据。
+   *
+   * ⚠️ 坏档实录（2026-09-18，x86NAS）：15 个罐里 8 个 JSON.parse 报
+   * "Extra data" —— 两个 save() 并发执行，长内容先落盘、短内容后 truncate
+   * 没生效，结果文件 = JSON_A + JSON_B。tough-cookie 的罐一坏，重启后登录态全丢。
+   *
+   * 截断策略：JSON.parse 报 "Unexpected non-whitespace character after JSON
+   * at position N" 时的 N **正好是第一个 JSON 的结束位置**，按它截最准。
+   * （早期版本按"最后一个 }]}\" 截，对 B 完整落盘的情况会把 B 一起带上，
+   * 依旧 parse 失败 —— 真机日志坐实过，别改回去。）
+   */
+  #readGoodJson() {
+    const text = readFileSync(this.file, "utf8");
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      const m = /at position (\d+)/.exec(String(e.message));
+      let cut = m ? Number(m[1]) : 0;
+      if (!(cut > 0)) {
+        // 回退：尾部碎片（第二个 JSON 没写完整）时，报错 position 可能不存在
+        cut = text.lastIndexOf("}]}") + 3;
+      }
+      if (cut > 0 && cut < text.length) {
+        const salvaged = JSON.parse(text.slice(0, cut));
+        log.warn(`cookie 罐尾部有脏数据，已截断恢复（原 ${text.length}B → ${cut}B）`);
+        return salvaged;
+      }
+      throw e;
     }
   }
 
@@ -156,12 +191,23 @@ export class SessionCookies {
   }
 
   async save() {
-    if (!this.dirty) return;
+    if (!this.dirty || this.#saving) {
+      // 已有保存在跑：保住 dirty 标记，让它跑完这轮后还能再被触发
+      if (this.#saving) this.dirty = true;
+      return;
+    }
     this.dirty = false;
+    this.#saving = true;
     try {
-      await writeFile(this.file, JSON.stringify(this.jar.toJSON()), "utf8");
+      // 原子写：先写临时文件再改名，杜绝"半个新罐 + 半个旧罐"的交叠坏档
+      const tmp = `${this.file}.tmp`;
+      await writeFile(tmp, JSON.stringify(this.jar.toJSON()), "utf8");
+      await rename(tmp, this.file);
     } catch (e) {
+      this.dirty = true;
       log.warn(`保存 cookie 罐失败: ${e.message}`);
+    } finally {
+      this.#saving = false;
     }
   }
 }

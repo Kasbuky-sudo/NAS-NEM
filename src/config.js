@@ -114,9 +114,15 @@ export const config = {
 
   /**
    * 单机多用户：每个浏览器会话拿到独立的数据空间（cookie / 曲库 / 缓存）。
-   * 关闭则所有访问者共用一份（单用户 NAS 可以关）。
+   *
+   * 默认关闭：家庭 NAS 通常一个人用，关闭后所有设备共用 "shared" 一份登录态 ——
+   * 在 A 设备扫码登录，B 设备打开就是已登录，不会"换个设备就得重新扫码"。
+   * （登录态本来就一直存在 NAS 的 users/<sid>/cookies.json 里，之前"不同步"的
+   * 体感来自 multiUser=true 时登录态绑在浏览器会话上，换个浏览器就是空罐。）
+   *
+   * 需要多个人各登各的账号时设 NASNEM_MULTI_USER=true。
    */
-  multiUser: envBool("NASNEM_MULTI_USER", true),
+  multiUser: envBool("NASNEM_MULTI_USER", false),
 
   /** 上游请求超时（毫秒） */
   requestTimeout: envInt("NASNEM_REQUEST_TIMEOUT", 30_000),

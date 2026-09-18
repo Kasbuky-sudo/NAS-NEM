@@ -41,8 +41,23 @@ import {
 } from "./orpheus/rewrite.js";
 import { handleProxy, handleCache } from "./proxy/frontend.js";
 import { attachBridge, sessionCount } from "./bridge/server.js";
+import { mountAgent } from "./agent/server.js";
 
 const log = createLogger("main");
+
+/* ─────────────────────────── 进程级兜底 ───────────────────────────
+ * NAS 应用宁可带病运行，也不能静默消失。流错误类异常（pipe 两端的
+ * 'error'、AbortSignal 砍流、第三方库漏接的 reject）一旦漏接就是
+ * uncaughtException / unhandledRejection，默认行为是进程退出 ——
+ * 应用中心里就是"应用自己停了"，必须手动再启动（两台 NAS 都实录过）。
+ * 这里接住只记日志不退出；请求级的错误已在各 handler 内消化。
+ */
+process.on("unhandledRejection", (reason) => {
+  log.error(`unhandledRejection（兜底，进程继续）: ${reason?.stack || reason}`);
+});
+process.on("uncaughtException", (err) => {
+  log.error(`uncaughtException（兜底，进程继续）: ${err?.stack || err}`);
+});
 
 const SID_COOKIE = "nas_sid";
 
@@ -183,10 +198,16 @@ async function main() {
   });
 
   /* 健康检查：容器探针 / 排障用 */
+  let pkgVersion = "";
+  try {
+    pkgVersion = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version || "";
+  } catch {
+    /* ignore */
+  }
   app.get("/__health", async (_req, res) => {
     res.json({
       ok: true,
-      version: "0.1.0",
+      version: pkgVersion,
       port: config.port,
       pack: config.pack.version,
       data: paths.dataDir,
@@ -198,6 +219,9 @@ async function main() {
       uptime: Math.round(process.uptime()),
     });
   });
+
+  /* Agent API：AI 通过 skill 操控（找歌 / 下载），Bearer token 鉴权 */
+  app.use("/agent", mountAgent());
 
   /* 反代：必须在静态之前 */
   app.use(async (req, res, next) => {
