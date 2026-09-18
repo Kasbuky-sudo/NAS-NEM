@@ -15,5 +15,5 @@ scripts/
 # 运行日志
 *.log
 
-# 本机 WorkBuddy 技能（含内网地址与凭据，绝不入库）
-skills/
+# skills/ 已入库（脱敏模板：<NAS_IP> 占位，无凭据）。
+# 各人自用的带真实 IP/凭据副本放 ~/.workbuddy/skills/，勿提交回这里。
