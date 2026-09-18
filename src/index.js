@@ -13,9 +13,13 @@
  * 端口默认 8163（NASNEM_PORT 覆盖），监听 0.0.0.0，方便 Docker / 局域网直连。
  */
 import { createServer } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
+import { gzip as gzipCb } from "node:zlib";
+import { promisify } from "node:util";
+
+const gzipAsync = promisify(gzipCb);
 
 // ⚠️ 这个 import 必须排在所有第三方依赖之前。
 // 它把应用自带的 node_modules（以及应用中心 nodejs_v22 的 node_modules）
@@ -80,6 +84,40 @@ function sidMiddleware(req, res, next) {
 
 /* ─────────────────────────── 静态前端 ─────────────────────────── */
 
+/* gzip 支持 ────────────────────────────────────────────────────────
+ * 飞牛 Connect 等远程中继走的是家庭宽带上行（常在 1~30Mbps 且不稳），
+ * 官方前端的 app/subApp 主 chunk 各约 5MB、CSS 各约 3.5MB，之前全部
+ * 明文传输：弱网下首屏要拉十几 MB，表现为"网页白屏"；点登录再拉
+ * subApp 的 8MB+，表现为"登录页出不来"。gzip 对 JS/CSS 有 3~4 倍压缩比，
+ * 是弱网体验的最大单项改善。
+ * 压缩结果按 (路径|mtime|size) 缓存在内存里，每个文件只压一次；
+ * 用异步 gzip 不阻塞事件循环。图片/字体/wasm 等已压缩格式不参与。 */
+const COMPRESSIBLE_EXT = new Set([
+  ".js", ".mjs", ".css", ".html", ".htm", ".json", ".svg", ".txt", ".xml", ".map",
+]);
+const GZIP_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const GZIP_MAX_FILE = 8 * 1024 * 1024;
+const gzipCache = new Map();
+let gzipCacheBytes = 0;
+
+function clientAcceptsGzip(req) {
+  return /\bgzip\b/i.test(String(req.headers["accept-encoding"] || ""));
+}
+
+async function gzipFor(abs, stat, raw) {
+  const key = `${abs}|${Math.round(stat.mtimeMs)}|${stat.size}`;
+  const hit = gzipCache.get(key);
+  if (hit) return hit;
+  const gz = await gzipAsync(raw, { level: 6 });
+  if (gzipCacheBytes + gz.length > GZIP_CACHE_MAX_BYTES) {
+    gzipCache.clear();
+    gzipCacheBytes = 0;
+  }
+  gzipCache.set(key, gz);
+  gzipCacheBytes += gz.length;
+  return gz;
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, "http://x");
   let rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
@@ -98,15 +136,42 @@ async function serveStatic(req, res) {
       const stat = statSync(abs);
       const type = mimeOf(abs);
 
+      // ETag（size+mtime）：Cache-Control: no-cache 只要求"每次问一遍"，
+      // 但之前连校验器都没有，浏览器只能整包重下 —— 弱网下二次打开也要
+      // 等十几 MB。现在命中 If-None-Match 直接回 304，一个来回完事。
+      const etag = `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
+      if (req.headers["if-none-match"] === etag) {
+        res.status(304);
+        res.setHeader("ETag", etag);
+        res.setHeader("Cache-Control", "no-cache");
+        res.end();
+        return true;
+      }
+
+      const gzOk =
+        clientAcceptsGzip(req) &&
+        stat.size <= GZIP_MAX_FILE &&
+        COMPRESSIBLE_EXT.has(extname(abs).toLowerCase());
+
       if (transformable(abs)) {
         const buf = await readAndRewrite(abs, stat.mtimeMs);
         if (buf) {
           res.setHeader("Content-Type", type);
           res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("ETag", etag);
           // 不发 X-Frame-Options：它表达不了"放行跨源祖先"，
           // 而飞牛桌面（:5666）嵌入本应用（:8163）属于跨源，发了就白屏。
           res.setHeader("Content-Security-Policy", FRAME_ANCESTORS);
-          res.end(buf);
+          if (gzOk) {
+            const gz = await gzipFor(abs, stat, buf);
+            res.setHeader("Content-Encoding", "gzip");
+            res.setHeader("Vary", "Accept-Encoding");
+            res.setHeader("Content-Length", String(gz.length));
+            res.end(gz);
+          } else {
+            res.setHeader("Content-Length", String(buf.length));
+            res.end(buf);
+          }
           return true;
         }
       }
@@ -118,10 +183,28 @@ async function serveStatic(req, res) {
           ? "public, max-age=604800"
           : "no-cache"
       );
+      res.setHeader("ETag", etag);
       // 官方前端有 subApp.html / rnpage 之类的同源嵌入。
       // 同上：用 CSP frame-ancestors 而不是 X-Frame-Options。
       res.setHeader("Content-Security-Policy", FRAME_ANCESTORS);
-      createReadStream(abs).pipe(res);
+      if (gzOk) {
+        const raw = await readFile(abs);
+        const gz = await gzipFor(abs, stat, raw);
+        res.setHeader("Content-Encoding", "gzip");
+        res.setHeader("Vary", "Accept-Encoding");
+        res.setHeader("Content-Length", String(gz.length));
+        res.end(gz);
+      } else {
+        // 大文件（音频缓存、表情包图等）照旧流式，不占内存。
+        // 顺手接住读取错误：之前流中途失败会挂起连接且不留日志。
+        const st = createReadStream(abs);
+        st.on("error", (err) => {
+          log.warn(`静态文件读取失败 ${abs}: ${err.message}`);
+          if (!res.headersSent) res.status(500);
+          res.destroy(err);
+        });
+        st.pipe(res);
+      }
       return true;
     } catch {
       /* 继续试下一个候选 */

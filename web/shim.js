@@ -1498,3 +1498,73 @@
   if (document.readyState === "complete") setTimeout(check, 25000);
   else window.addEventListener("load", function () { setTimeout(check, 25000); });
 })();
+
+/* ── 首屏启动画面：弱网下不再白屏 ─────────────────────────────────
+ * 主窗口的首屏要拉 12MB+ 的官方 bundle（即使有 gzip，弱网也要十几秒），
+ * 之前这段时间是纯白屏，用户以为"打不开"。shim 是页面上最早执行的
+ * 脚本之一，在这里同步铺一块启动画面（红圈 spinner + 状态文案）：
+ *   - window load 后 600ms 淡出（bundle 已执行、首帧已渲染）；
+ *   - 15s 仍在加载则换提示文案（告诉用户弱网首次加载可能 1~2 分钟）；
+ *   - 90s 兜底强制淡出，避免极端情况下画面卡死。
+ * 只在主窗口（app.html / index.html）生效；子窗口（登录浮层）有
+ * 白底容器垫着，不铺。 */
+(function () {
+  if (!W.__NASNEM_IS_MAIN__) return;
+  if (W.__NASNEM_SPLASH__) return;
+  W.__NASNEM_SPLASH__ = true;
+  try {
+    var host = document.body || document.documentElement;
+    if (!host) return;
+
+    var style = document.createElement("style");
+    style.textContent =
+      "@keyframes __nasnem_spin{to{transform:rotate(360deg)}}" +
+      "@media (prefers-color-scheme:dark){#__nasnem_splash{background:#1a1a1a!important}" +
+      "#__nasnem_splash .ntitle{color:#fff!important}}" ;
+    (document.head || document.documentElement).appendChild(style);
+
+    var d = document.createElement("div");
+    d.id = "__nasnem_splash";
+    d.style.cssText = [
+      "position:fixed", "left:0", "top:0", "right:0", "bottom:0",
+      "z-index:2147483001", "background:#fff",
+      "display:flex", "flex-direction:column", "align-items:center", "justify-content:center",
+      "transition:opacity .45s", "font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif"
+    ].join(";");
+
+    var ring = document.createElement("div");
+    ring.style.cssText =
+      "width:44px;height:44px;border-radius:50%;" +
+      "border:4px solid #f3dcdc;border-top-color:#C20C0C;" +
+      "animation:__nasnem_spin .9s linear infinite";
+
+    var title = document.createElement("div");
+    title.className = "ntitle";
+    title.textContent = "网易云音乐";
+    title.style.cssText =
+      "margin-top:16px;font-size:15px;color:#333;letter-spacing:1px";
+
+    var tip = document.createElement("div");
+    tip.textContent = "正在加载…";
+    tip.style.cssText = "margin-top:8px;font-size:12px;color:#999";
+
+    d.appendChild(ring);
+    d.appendChild(title);
+    d.appendChild(tip);
+    host.appendChild(d);
+
+    var gone = false;
+    function hide() {
+      if (gone) return;
+      gone = true;
+      d.style.opacity = "0";
+      setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 500);
+    }
+    W.addEventListener("load", function () { setTimeout(hide, 600); });
+    setTimeout(function () {
+      tip.textContent = "网络较慢，仍在加载…首次加载可能需要 1~2 分钟";
+    }, 15000);
+    setTimeout(hide, 90000);
+  } catch (e) { /* 启动画面失败也不能影响官方前端 */
+  }
+})();
