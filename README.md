@@ -2,7 +2,8 @@
 
 把网易云音乐官方 PC 客户端跑在飞牛 fnOS NAS 上的**原生应用**（非 Docker）：
 服务端解析官方乐库接口，浏览器 / fnOS 桌面里直接用完整播放器 ——
-歌单、每日推荐、排行榜、歌词、二维码登录、在线播放、**歌曲下载到 NAS**。
+歌单、每日推荐、排行榜、歌词、二维码登录、在线播放、**歌曲下载到 NAS**，
+还能让 AI 助手帮你找歌下载（Agent API）。
 
 - **开发者**：[YUCLing](https://github.com/YUCLing)（上游 [open-orpheus](https://github.com/YUCLing/open-orpheus)，MIT）
 - **NAS 移植 / 打包 / 发布**：[Kasbuky-sudo](https://github.com/Kasbuky-sudo)
@@ -15,16 +16,37 @@
 - 歌曲下载，落地 NAS 用户根目录 `音乐` → `/vol1/1000/网易云音乐`
 - 登录态跨设备共享：所有设备共用 NAS 上的一份登录态，一处扫码处处登录
   （需要每个浏览器独立登录态时，设 `NASNEM_MULTI_USER=true` 开启会话隔离）
+- 弱网友好：静态资源 gzip 压缩（体积约降至 1/4）+ 缓存校验（ETag/304），
+  首屏加载画面有进度提示 —— 飞牛 Connect 等远程访问不再长时间白屏
+- Agent API：`/agent/*` 提供找歌 / 下载 / 状态查询，供 AI 助手自动化调用（见下文）
 - 纯 Node.js，无沙箱无 Docker，复用应用中心的 Node.js v22
 
 ## 安装（飞牛 fnOS）
+
+**方式一：FnDepot 应用源一键安装（推荐）**
+
+应用中心 → 应用源 → 添加 [FnDepot](https://github.com/Kasbuky-sudo/FnDepot)，
+搜索「网易云音乐」安装，后续升级也在应用中心里点一下即可。
+
+**方式二：手动装包**
 
 1. 应用中心先装 **Node.js v22**（`nodejs_v22`，本包声明了该依赖，通常会自动装）
 2. 从 [Releases](../../releases) 下载 `NETEASE_CLOUD_MUSIC-<版本>.fpk`
 3. 应用中心 → 手动安装 → 选择 fpk
 4. 桌面出现「网易云音乐」图标，点开即用（端口 `8163`）
 
-> 需要 FnDepot 应用源一键安装的，见 [FnDepot 收录](../../releases) 说明。
+## AI 助手技能（Agent API）
+
+应用内置 Agent API（Bearer token 鉴权），可以让 AI 助手直接帮你搜歌、下载：
+
+```bash
+# token 在 NAS 应用数据目录的 data/agent-token（0600）
+curl -H "Authorization: Bearer <token>" http://<NAS_IP>:8163/agent/status
+```
+
+配套三个开箱即用的技能模板在 [`skills/`](skills/README.md)：
+`nem-status`（探测服务与登录态）、`nem-search`（搜歌）、`nem-download`（下载到 NAS）。
+导入 AI 助手后把 `<NAS_IP>` 换成你的 NAS 地址即可。
 
 ## 自己构建
 
@@ -41,7 +63,8 @@ bash packaging/fnOS/scripts/build.sh
 
 ```
 src/        服务端（桥接层 src/bridge、接口代理 src/proxy、前端改写 src/orpheus）
-web/        注入官方前端的 shim.js（winhelper 窗口 / audioplayer 播放桥接）
+web/        注入官方前端的 shim.js（winhelper 窗口 / audioplayer 播放桥接 / 首屏加载画面）
+skills/     Agent API 配套 AI 技能模板（nem-status / nem-search / nem-download）
 packaging/  fnOS fpk 打包配置（manifest / cmd / ui / 构建脚本）
 data/       前端资源目录（不入库）
 ```
@@ -57,7 +80,8 @@ data/       前端资源目录（不入库）
   sudo setfacl -m u:<应用用户>:x /vol1/1000
   sudo chown <应用用户>:<应用用户> "/vol1/1000/网易云音乐"
   ```
-- 首次使用前需在 NAS 上准备一次前端资源，之后随包分发；详见脚本注释
+- Agent API 的匿名（未登录）能力有限：可搜索、可下载免费歌曲；VIP / 付费歌曲需先扫码登录，
+  且按账号自身权限处理
 
 ## 许可
 
