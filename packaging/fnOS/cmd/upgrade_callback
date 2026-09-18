@@ -8,7 +8,9 @@ mkdir -p "${TRIM_PKGVAR}/data"
 chown -R "${TRIM_USERNAME}:${TRIM_GROUPNAME}" "${TRIM_PKGVAR}" 2>/dev/null || true
 
 ### 下载目录：与 install_callback 同款逻辑（升级路径也要保证它存在）
+### 注意 /vol1/1000 是 ACL 管控（d---------+），必须给应用用户补"仅穿越"ACL
 if [ -d "/vol1/1000" ]; then
+    setfacl -m "u:${TRIM_USERNAME}:x" /vol1/1000 2>/dev/null || true
     if [ ! -e "/vol1/1000/网易云音乐" ]; then
         mkdir -p "/vol1/1000/网易云音乐" || true
     fi

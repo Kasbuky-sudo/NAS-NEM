@@ -9,10 +9,13 @@ mkdir -p "${TRIM_PKGVAR}/data"
 chown -R "${TRIM_USERNAME}:${TRIM_GROUPNAME}" "${TRIM_PKGVAR}" 2>/dev/null || true
 
 ### 下载音乐落地目录：NAS 用户根目录下的「网易云音乐」
-### /vol1/1000 是 fnOS 主用户（uid 1000）的家目录，应用进程以 ${TRIM_USERNAME}
-### 身份运行、没权在家目录里建目录 —— 这里以 root 预建并把属主交给应用用户。
+### /vol1/1000 是 fnOS 主用户（uid 1000）的家目录，且是 **ACL 管控**的
+### （ls 显示 d---------+，非属主连穿越都不行）；应用进程以 ${TRIM_USERNAME}
+### 身份运行、没权在家目录里建目录 —— 这里以 root 预建并把属主交给应用用户，
+### 再给应用用户补一条"仅穿越"的 ACL（x，不给列目录权）。
 ### 服务端（src/config.js resolveDownloadDir）检测到 /vol1/1000 就会用它。
 if [ -d "/vol1/1000" ]; then
+    setfacl -m "u:${TRIM_USERNAME}:x" /vol1/1000 2>/dev/null || true
     if [ ! -e "/vol1/1000/网易云音乐" ]; then
         mkdir -p "/vol1/1000/网易云音乐" || true
     fi
