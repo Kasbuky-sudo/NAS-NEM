@@ -52,18 +52,38 @@ function hasAllDeps(dir) {
 export function candidateModuleDirs() {
   const cands = [
     resolve(APP_DIR, "node_modules"),
-    "/vol1/@appcenter/nodejs_v22/lib/node_modules",
-    "/vol1/@appcenter/nodejs_v22/node_modules",
     "/usr/local/lib/node_modules",
     "/usr/lib/node_modules",
   ];
-  // 飞牛上 nodejs_v22 的实际落地位置随版本目录名变化，扫一遍兜住
+  // 当前 node 运行时自带的 node_modules：从 execPath 推导
+  // （…/nodejs_v22/bin/node → …/nodejs_v22/lib|node_modules），
+  // 天然跟随实际安装位置 —— 应用/依赖装在哪个存储空间都对。
+  try {
+    const rt = dirname(dirname(process.execPath));
+    cands.push(resolve(rt, "lib", "node_modules"), resolve(rt, "node_modules"));
+  } catch {
+    /* ignore */
+  }
+  // 飞牛上 nodejs_v22 的实际落地位置随卷与目录名变化：扫所有卷的 @appcenter 兜底
+  // （2026-09-19 修复：旧逻辑只扫 /vol1，用户装到存储空间2 就找不到）。
   try {
     const { readdirSync } = require_("node:fs");
-    for (const v of readdirSync("/vol1/@appcenter")) {
-      if (/^nodejs_v\d+/.test(v)) {
-        cands.push(`/vol1/@appcenter/${v}/lib/node_modules`);
-        cands.push(`/vol1/@appcenter/${v}/node_modules`);
+    const appcenters = [];
+    for (const entry of readdirSync("/")) {
+      if (/^vol\d+$/.test(entry)) appcenters.push(`/${entry}/@appcenter`);
+    }
+    for (const ac of appcenters) {
+      let names;
+      try {
+        names = readdirSync(ac);
+      } catch {
+        continue; // 该卷没有 @appcenter 或不可读，跳过
+      }
+      for (const v of names) {
+        if (/^nodejs_v\d+/.test(v)) {
+          cands.push(`${ac}/${v}/lib/node_modules`);
+          cands.push(`${ac}/${v}/node_modules`);
+        }
       }
     }
   } catch {

@@ -2,8 +2,11 @@
 
 ### 网易云音乐 NAS 版 —— 服务生命周期
 ###
-### 原生 Node.js 应用，运行期用应用中心的 Node.js v22：
-###     /vol1/@appcenter/nodejs_v22/bin/node
+### 原生 Node.js 应用，运行期用应用中心的 Node.js v22。
+### ⚠️ node 的查找不挑卷：用户可能把应用/依赖装到任意存储空间
+### （/vol1、/vol2、…），所以 find_node 首选 /var/apps 统一视图
+### （fnOS 把每个已装应用挂到 /var/apps/<app>/target → 真实卷路径），
+### 再兜底全卷 glob。绝不要把路径写死在 /vol1 —— 那只是我们自己的机器。
 ### 代码 + 官方前端包在 ${TRIM_APPDEST}（只读，升级整体覆盖），
 ### 用户数据（登录态、缓存）落 ${TRIM_PKGVAR}/data。
 ###
@@ -74,14 +77,19 @@ read_pid() {
 }
 
 find_node() {
-    if [ -x "${NODE_BIN}" ]; then
-        printf '%s' "${NODE_BIN}"
-        return 0
-    fi
-    # 退路：PATH 或应用中心其它 Node 版本
-    local p
+    local d p
+    # 首选：/var/apps 统一视图（跨卷有效）。fnOS 把每个已装应用都挂到
+    # /var/apps/<app>，其中 target 指向真实安装目录 —— 依赖 nodejs_v22
+    # 装在哪个存储空间都能解析。2026-09-19 修复：有用户把应用装到
+    # 存储空间2，旧逻辑全部写死 /vol1，find_node 三级查找全落空，
+    # 启用直接报「未找到 Node.js 运行时」。
+    for d in /var/apps/nodejs_v22/target/bin/node /var/apps/nodejs_v22/bin/node; do
+        [ -x "${d}" ] && { printf '%s' "${d}"; return 0; }
+    done
+    # 兜底：旧固定路径 → PATH → 全卷 glob（/vol* 覆盖所有存储空间）
+    [ -x "${NODE_BIN}" ] && { printf '%s' "${NODE_BIN}"; return 0; }
     p="$(command -v node 2>/dev/null)" && [ -x "${p}" ] && { printf '%s' "${p}"; return 0; }
-    for d in /vol1/@appcenter/nodejs_v*/bin/node; do
+    for d in /vol*/@appcenter/nodejs_v*/bin/node; do
         [ -x "${d}" ] && { printf '%s' "${d}"; return 0; }
     done
     return 1

@@ -1,5 +1,5 @@
 appname               = NETEASE_CLOUD_MUSIC
-version               = 0.4.0
+version               = 0.4.1
 display_name          = 网易云音乐
 desc                  = 网易云音乐官方客户端的 NAS 网页版。服务端解析官方乐库接口，浏览器里直接用完整播放器：歌单、每日推荐、歌词、无损音质、本地曲库。原生 Node.js 运行，无需 Docker。上游项目 open-orpheus（MIT），本包仅做 NAS 侧移植与封装。
 platform              = all
@@ -17,4 +17,4 @@ service_port          = 8163
 install_dep_apps      = nodejs_v22
 ctl_stop              = true
 checkport             = true
-changelog             = 0.4.0：弱网优化——静态资源 gzip 压缩（体积约降至 1/4）与缓存校验（二次打开不再全量重下），新增首屏加载画面；飞牛 Connect 等远程弱网环境不再白屏、登录页打不开。
+changelog             = 0.4.1：修复应用安装到非默认存储空间（非 /vol1 卷）时找不到 Node.js 运行时、无法启用的问题——运行时查找改为跨卷解析（/var/apps 统一视图 + 全卷扫描）。
